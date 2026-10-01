@@ -5,6 +5,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { TiposGastoScreen } from '../screens/TiposGastoScreen';
 import { CustomDrawerContent } from '../components/CustomDrawerContent';
 import { COLORS } from '../constants/colors';
 import type { RootDrawerParamList } from './types';
@@ -53,6 +54,21 @@ export const DrawerNavigator: React.FC = () => {
           drawerIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'home' : 'home-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="TiposGasto"
+        component={TiposGastoScreen}
+        options={{
+          title: 'Tipos de Gasto',
+          drawerIcon: ({ focused, color, size }) => (
+            <Ionicons
+              name={focused ? 'pricetag' : 'pricetag-outline'}
               size={size}
               color={color}
             />

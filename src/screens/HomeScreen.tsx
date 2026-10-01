@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -7,6 +7,8 @@ import type { RootDrawerNavigationProp } from '../navigation/types';
 
 export const HomeScreen: React.FC = () => {
   const navigation = useNavigation<RootDrawerNavigationProp<'Home'>>();
+  const { width } = useWindowDimensions();
+  const isWide = width >= 640; // tablet / web
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -32,9 +34,9 @@ export const HomeScreen: React.FC = () => {
 
       {/* Quick Action Grid */}
       <Text style={styles.sectionTitle}>Accesos Rápidos</Text>
-      <View style={styles.grid}>
+      <View style={[styles.grid, isWide && styles.gridWide]}>
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, isWide && styles.cardWide]}
           onPress={() => navigation.navigate('Profile', { userId: 'usr_123' })}
           activeOpacity={0.7}
         >
@@ -46,7 +48,7 @@ export const HomeScreen: React.FC = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, isWide && styles.cardWide]}
           onPress={() => navigation.navigate('Notifications')}
           activeOpacity={0.7}
         >
@@ -58,7 +60,19 @@ export const HomeScreen: React.FC = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.card}
+          style={[styles.card, isWide && styles.cardWide]}
+          onPress={() => navigation.navigate('TiposGasto')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: '#F0FDF4' }]}>
+            <Ionicons name="pricetag-outline" size={24} color="#16A34A" />
+          </View>
+          <Text style={styles.cardTitle}>Tipos de Gasto</Text>
+          <Text style={styles.cardDescription}>Gestionar categorías y catálogo de costos</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, isWide && styles.cardWide]}
           onPress={() => navigation.navigate('Settings')}
           activeOpacity={0.7}
         >
@@ -142,6 +156,15 @@ const styles = StyleSheet.create({
   },
   grid: {
     gap: 14,
+  },
+  gridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  cardWide: {
+    // Dos columnas con gap de 14
+    width: 'calc(50% - 7px)' as any,
+    flexBasis: 'calc(50% - 7px)' as any,
   },
   card: {
     backgroundColor: COLORS.card,

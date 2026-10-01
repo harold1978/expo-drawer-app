@@ -3,6 +3,8 @@ import type { RouteProp } from '@react-navigation/native';
 
 export type RootDrawerParamList = {
   Home: undefined;
+  Gastos: undefined;
+  TiposGasto: undefined;
   Profile: { userId?: string };
   Notifications: undefined;
   Settings: undefined;
