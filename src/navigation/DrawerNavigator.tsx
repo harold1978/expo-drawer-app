@@ -5,6 +5,7 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { CamadasScreen } from '../screens/CamadasScreen';
 import { GastosScreen } from '../screens/GastosScreen';
 import { TiposGastoScreen } from '../screens/TiposGastoScreen';
 import { CustomDrawerContent } from '../components/CustomDrawerContent';
@@ -55,6 +56,21 @@ export const DrawerNavigator: React.FC = () => {
           drawerIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'home' : 'home-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Camadas"
+        component={CamadasScreen}
+        options={{
+          title: 'Camadas',
+          drawerIcon: ({ focused, color, size }) => (
+            <Ionicons
+              name={focused ? 'layers' : 'layers-outline'}
               size={size}
               color={color}
             />

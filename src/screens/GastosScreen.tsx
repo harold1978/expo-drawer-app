@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -31,6 +33,7 @@ import {
 } from '../services/GastoService';
 import { obtenerTiposGasto } from '../services/TipoGastoService';
 import { showAlert } from '../utils';
+import type { RootDrawerParamList } from '../navigation/types';
 
 const isWeb = Platform.OS === 'web';
 
@@ -95,6 +98,8 @@ const colorCategoria = (index: number) =>
 // Componente principal
 // ─────────────────────────────────────────────────────────
 export const GastosScreen: React.FC = () => {
+  const route = useRoute<RouteProp<RootDrawerParamList, 'Gastos'>>();
+  const camadaIdSolicitada = route.params?.camadaId;
   const { width } = useWindowDimensions();
   const isWide = width >= 640;
 
@@ -154,6 +159,12 @@ export const GastosScreen: React.FC = () => {
   useEffect(() => {
     cargarDatosMaestros();
   }, [cargarDatosMaestros]);
+
+  useEffect(() => {
+    if (!camadaIdSolicitada) return;
+    const camada = camadas.find((item) => item.id === camadaIdSolicitada);
+    if (camada) setCamadaSeleccionada(camada);
+  }, [camadaIdSolicitada, camadas]);
 
   // ═══════════════════════════════════════════════════════
   // Carga de gastos cuando cambia la camada seleccionada
@@ -298,7 +309,7 @@ export const GastosScreen: React.FC = () => {
     if (!gasto.id) return;
     try {
       setCargandoGastos(true);
-      await eliminarGasto(gasto.id, gasto.camadaId, gasto.precio);
+      await eliminarGasto(gasto.id);
       if (camadaSeleccionada?.id) {
         await cargarGastos(camadaSeleccionada.id);
       }
@@ -590,7 +601,7 @@ export const GastosScreen: React.FC = () => {
                           style={[
                             styles.camadaOpcionNombre,
                             camadaSeleccionada?.id === c.id &&
-                              styles.camadaOpcionNombreActiva,
+                            styles.camadaOpcionNombreActiva,
                           ]}
                         >
                           {c.nombre}

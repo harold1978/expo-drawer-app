@@ -40,10 +40,21 @@ export interface IResumenGranja {
 
 const coleccionCamadasRef = collection(db, 'camadas');
 
+export class CamadaConGastosError extends Error {
+  constructor(cantidadGastos: number) {
+    super(
+      `No se puede eliminar la camada porque tiene ${cantidadGastos} ${cantidadGastos === 1 ? 'gasto asociado' : 'gastos asociados'}.`,
+    );
+    this.name = 'CamadaConGastosError';
+  }
+}
+
 /**
  * Crea una nueva camada en Firestore.
  */
-export const crearCamada = async (camada: NuevaCamadaInput): Promise<string> => {
+export const crearCamada = async (
+  camada: NuevaCamadaInput,
+): Promise<string> => {
   const docRef = await addDoc(coleccionCamadasRef, {
     ...camadaToFirestore(camada),
     createdAt: serverTimestamp(),
@@ -68,13 +79,17 @@ export const obtenerCamadasActivas = async (): Promise<Camada[]> => {
   const snapshot = await getDocs(q);
   const camadas = snapshot.docs.map((d) => camadaFromFirestore(d.id, d.data()));
   // Ordenar en memoria por fechaIngreso descendente
-  return camadas.sort((a, b) => b.fechaIngreso.getTime() - a.fechaIngreso.getTime());
+  return camadas.sort(
+    (a, b) => b.fechaIngreso.getTime() - a.fechaIngreso.getTime(),
+  );
 };
 
 /**
  * Obtiene una camada por su ID.
  */
-export const obtenerCamadaPorId = async (id: string): Promise<Camada | null> => {
+export const obtenerCamadaPorId = async (
+  id: string,
+): Promise<Camada | null> => {
   const docRef = doc(db, 'camadas', id);
   const snap = await getDoc(docRef);
   if (!snap.exists()) return null;
@@ -84,17 +99,23 @@ export const obtenerCamadaPorId = async (id: string): Promise<Camada | null> => 
 /**
  * Actualiza datos generales o fechas de una camada.
  */
-export const actualizarCamada = async (id: string, datos: Partial<Camada>): Promise<void> => {
+export const actualizarCamada = async (
+  id: string,
+  datos: Partial<Camada>,
+): Promise<void> => {
   const docRef = doc(db, 'camadas', id);
   const updatePayload: Record<string, any> = {};
 
   if (datos.nombre !== undefined) updatePayload.nombre = datos.nombre;
-  if (datos.cantidadPollos !== undefined) updatePayload.cantidadPollos = Number(datos.cantidadPollos);
-  if (datos.fechaIngreso !== undefined) updatePayload.fechaIngreso = Timestamp.fromDate(datos.fechaIngreso);
+  if (datos.cantidadPollos !== undefined)
+    updatePayload.cantidadPollos = Number(datos.cantidadPollos);
+  if (datos.fechaIngreso !== undefined)
+    updatePayload.fechaIngreso = Timestamp.fromDate(datos.fechaIngreso);
   if (datos.fechaCambioAlimentoDesarrollo !== undefined) {
-    updatePayload.fechaCambioAlimentoDesarrollo = datos.fechaCambioAlimentoDesarrollo
-      ? Timestamp.fromDate(datos.fechaCambioAlimentoDesarrollo)
-      : null;
+    updatePayload.fechaCambioAlimentoDesarrollo =
+      datos.fechaCambioAlimentoDesarrollo
+        ? Timestamp.fromDate(datos.fechaCambioAlimentoDesarrollo)
+        : null;
   }
   if (datos.fechaCambioAlimentoEngorde !== undefined) {
     updatePayload.fechaCambioAlimentoEngorde = datos.fechaCambioAlimentoEngorde
@@ -115,7 +136,10 @@ export const actualizarCamada = async (id: string, datos: Partial<Camada>): Prom
 /**
  * Registra bajas (muertes) de forma atómica.
  */
-export const registrarBajasCamada = async (camadaId: string, bajasAdicionales: number): Promise<void> => {
+export const registrarBajasCamada = async (
+  camadaId: string,
+  bajasAdicionales: number,
+): Promise<void> => {
   if (bajasAdicionales <= 0) return;
   const docRef = doc(db, 'camadas', camadaId);
   await updateDoc(docRef, {
@@ -129,7 +153,7 @@ export const registrarBajasCamada = async (camadaId: string, bajasAdicionales: n
 export const cambiarEstadoVentaCamada = async (
   camadaId: string,
   enVenta: boolean,
-  desactivar: boolean = true
+  desactivar: boolean = true,
 ): Promise<void> => {
   const docRef = doc(db, 'camadas', camadaId);
   await updateDoc(docRef, {
@@ -142,6 +166,15 @@ export const cambiarEstadoVentaCamada = async (
  * Elimina una camada.
  */
 export const eliminarCamada = async (camadaId: string): Promise<void> => {
+  const gastosQuery = query(
+    collection(db, 'gastos'),
+    where('camadaId', '==', camadaId),
+  );
+  const gastosSnapshot = await getDocs(gastosQuery);
+  if (!gastosSnapshot.empty) {
+    throw new CamadaConGastosError(gastosSnapshot.size);
+  }
+
   const docRef = doc(db, 'camadas', camadaId);
   await deleteDoc(docRef);
 };
@@ -149,7 +182,9 @@ export const eliminarCamada = async (camadaId: string): Promise<void> => {
 /**
  * Consulta las próximas fechas de cambio de alimento o desparasitación en camadas activas.
  */
-export const obtenerAlertasProximasCamadas = async (diasMargen: number = 7): Promise<IAlertaCamada[]> => {
+export const obtenerAlertasProximasCamadas = async (
+  diasMargen: number = 7,
+): Promise<IAlertaCamada[]> => {
   const activas = await obtenerCamadasActivas();
   const hoy = new Date();
   hoy.setHours(0, 0, 0, 0);
@@ -161,7 +196,10 @@ export const obtenerAlertasProximasCamadas = async (diasMargen: number = 7): Pro
   const alertas: IAlertaCamada[] = [];
 
   activas.forEach((camada) => {
-    const verificarFecha = (fecha: Date | null | undefined, tipo: IAlertaCamada['tipoAlerta']) => {
+    const verificarFecha = (
+      fecha: Date | null | undefined,
+      tipo: IAlertaCamada['tipoAlerta'],
+    ) => {
       if (!fecha) return;
       const d = new Date(fecha);
       if (d >= hoy && d <= margen) {

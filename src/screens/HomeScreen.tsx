@@ -37,6 +37,18 @@ export const HomeScreen: React.FC = () => {
       <View style={[styles.grid, isWide && styles.gridWide]}>
         <TouchableOpacity
           style={[styles.card, isWide && styles.cardWide]}
+          onPress={() => navigation.navigate('Camadas')}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.iconCircle, { backgroundColor: '#E8F5EE' }]}>
+            <Ionicons name="layers-outline" size={24} color="#247A4B" />
+          </View>
+          <Text style={styles.cardTitle}>Camadas</Text>
+          <Text style={styles.cardDescription}>Administrar lotes, aves y gastos asociados</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.card, isWide && styles.cardWide]}
           onPress={() => navigation.navigate('Profile', { userId: 'usr_123' })}
           activeOpacity={0.7}
         >

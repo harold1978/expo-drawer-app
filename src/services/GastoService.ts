@@ -6,6 +6,7 @@ import {
   query,
   where,
   writeBatch,
+  runTransaction,
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
@@ -98,24 +99,33 @@ export const obtenerGastosPorProveedor = async (
 /**
  * Elimina un gasto y descuenta atómicamente su valor del totalGastos de la camada.
  */
-export const eliminarGasto = async (
-  gastoId: string,
-  camadaId: string,
-  precio: number,
-): Promise<void> => {
-  const batch = writeBatch(db);
+export const eliminarGasto = async (gastoId: string): Promise<void> => {
+  await runTransaction(db, async (transaction) => {
+    const gastoDoc = doc(db, 'gastos', gastoId);
+    const gastoSnapshot = await transaction.get(gastoDoc);
 
-  // 1. Borrar documento del gasto
-  const gastoDoc = doc(db, 'gastos', gastoId);
-  batch.delete(gastoDoc);
+    if (!gastoSnapshot.exists()) return;
 
-  // 2. Descontar valor de la camada
-  const camadaDoc = doc(db, 'camadas', camadaId);
-  batch.update(camadaDoc, {
-    totalGastos: increment(-Math.abs(Number(precio) || 0)),
+    const gasto = gastoSnapshot.data();
+    const camadaId = String(gasto.camadaId || '').trim();
+    if (!camadaId) {
+      throw new Error(
+        'El gasto no tiene una camada asociada y no puede eliminarse.',
+      );
+    }
+
+    const camadaDoc = doc(db, 'camadas', camadaId);
+    const camadaSnapshot = await transaction.get(camadaDoc);
+    if (!camadaSnapshot.exists()) {
+      throw new Error('La camada asociada al gasto ya no existe.');
+    }
+
+    const precio = Number(gasto.precio);
+    transaction.delete(gastoDoc);
+    transaction.update(camadaDoc, {
+      totalGastos: increment(-Math.abs(Number.isFinite(precio) ? precio : 0)),
+    });
   });
-
-  await batch.commit();
 };
 
 /**
