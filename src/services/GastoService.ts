@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   query,
   where,
@@ -29,12 +30,33 @@ const coleccionGastosRef = collection(db, 'gastos');
  * Registra un gasto financiero e incrementa automáticamente el totalGastos de la camada.
  */
 export const crearGasto = async (gasto: NuevoGastoInput): Promise<string> => {
+  if (!gasto.camadaId?.trim()) {
+    throw new Error('Debes seleccionar una camada para registrar el gasto.');
+  }
+  if (!gasto.tipoGastoId?.trim()) {
+    throw new Error('Debes seleccionar un tipo de gasto válido.');
+  }
+
+  const precio = Number(gasto.precio);
+  if (!Number.isFinite(precio) || precio <= 0) {
+    throw new Error('El monto del gasto debe ser mayor a cero.');
+  }
+
+  const tipoGastoDoc = await getDoc(doc(db, 'tipos_gasto', gasto.tipoGastoId));
+  if (!tipoGastoDoc.exists()) {
+    throw new Error(
+      'El tipo de gasto seleccionado ya no existe. Actualiza la lista e inténtalo de nuevo.',
+    );
+  }
+
+  const tipoGastoNombre = String(tipoGastoDoc.data().nombre || '').trim();
   const batch = writeBatch(db);
 
   // 1. Crear documento en la colección 'gastos'
   const nuevoGastoDoc = doc(coleccionGastosRef);
   batch.set(nuevoGastoDoc, {
     ...gastoToFirestore(gasto),
+    tipoGastoNombre,
     createdAt: serverTimestamp(),
   });
 
@@ -51,7 +73,9 @@ export const crearGasto = async (gasto: NuevoGastoInput): Promise<string> => {
 /**
  * Obtiene todos los gastos pertenecientes a una camada específica.
  */
-export const obtenerGastosPorCamada = async (camadaId: string): Promise<Gasto[]> => {
+export const obtenerGastosPorCamada = async (
+  camadaId: string,
+): Promise<Gasto[]> => {
   const q = query(coleccionGastosRef, where('camadaId', '==', camadaId));
   const snapshot = await getDocs(q);
   const gastos = snapshot.docs.map((d) => gastoFromFirestore(d.id, d.data()));
@@ -62,7 +86,9 @@ export const obtenerGastosPorCamada = async (camadaId: string): Promise<Gasto[]>
 /**
  * Obtiene todos los gastos registrados con un proveedor determinado.
  */
-export const obtenerGastosPorProveedor = async (proveedor: string): Promise<Gasto[]> => {
+export const obtenerGastosPorProveedor = async (
+  proveedor: string,
+): Promise<Gasto[]> => {
   const q = query(coleccionGastosRef, where('proveedor', '==', proveedor));
   const snapshot = await getDocs(q);
   const gastos = snapshot.docs.map((d) => gastoFromFirestore(d.id, d.data()));
@@ -75,7 +101,7 @@ export const obtenerGastosPorProveedor = async (proveedor: string): Promise<Gast
 export const eliminarGasto = async (
   gastoId: string,
   camadaId: string,
-  precio: number
+  precio: number,
 ): Promise<void> => {
   const batch = writeBatch(db);
 
@@ -96,7 +122,7 @@ export const eliminarGasto = async (
  * Agrupa los gastos de una camada por categoría/tipo y calcula porcentajes.
  */
 export const obtenerResumenGastosPorCategoria = async (
-  camadaId: string
+  camadaId: string,
 ): Promise<IResumenCategoria[]> => {
   const gastos = await obtenerGastosPorCamada(camadaId);
   if (gastos.length === 0) return [];
@@ -120,7 +146,9 @@ export const obtenerResumenGastosPorCategoria = async (
       totalInvertido: Number(info.total.toFixed(2)),
       cantidadCompras: info.count,
       porcentaje:
-        totalGeneral > 0 ? Number(((info.total / totalGeneral) * 100).toFixed(1)) : 0,
+        totalGeneral > 0
+          ? Number(((info.total / totalGeneral) * 100).toFixed(1))
+          : 0,
     }))
     .sort((a, b) => b.totalInvertido - a.totalInvertido);
 };

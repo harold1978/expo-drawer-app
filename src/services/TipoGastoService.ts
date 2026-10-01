@@ -7,6 +7,7 @@ import {
   deleteDoc,
   query,
   orderBy,
+  where,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -18,6 +19,15 @@ import {
 } from '../models/TipoGasto';
 
 const coleccionTiposRef = collection(db, 'tipos_gasto');
+
+export class TipoGastoEnUsoError extends Error {
+  constructor(cantidadGastos: number) {
+    super(
+      `No se puede eliminar este tipo porque está asociado a ${cantidadGastos} ${cantidadGastos === 1 ? 'gasto' : 'gastos'}.`,
+    );
+    this.name = 'TipoGastoEnUsoError';
+  }
+}
 
 /**
  * Obtiene todos los tipos de gasto registrados, ordenados alfabéticamente.
@@ -42,7 +52,10 @@ export const crearTipoGasto = async (nombre: string): Promise<string> => {
 /**
  * Actualiza el nombre de un tipo de gasto existente.
  */
-export const actualizarTipoGasto = async (id: string, nombre: string): Promise<void> => {
+export const actualizarTipoGasto = async (
+  id: string,
+  nombre: string,
+): Promise<void> => {
   const docRef = doc(db, 'tipos_gasto', id);
   await updateDoc(docRef, { nombre: nombre.trim() });
 };
@@ -51,6 +64,14 @@ export const actualizarTipoGasto = async (id: string, nombre: string): Promise<v
  * Elimina un tipo de gasto por su ID.
  */
 export const eliminarTipoGasto = async (id: string): Promise<void> => {
+  const gastosRef = collection(db, 'gastos');
+  const gastosAsociados = query(gastosRef, where('tipoGastoId', '==', id));
+  const snapshot = await getDocs(gastosAsociados);
+
+  if (!snapshot.empty) {
+    throw new TipoGastoEnUsoError(snapshot.size);
+  }
+
   const docRef = doc(db, 'tipos_gasto', id);
   await deleteDoc(docRef);
 };

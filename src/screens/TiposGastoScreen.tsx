@@ -22,6 +22,7 @@ import {
   actualizarTipoGasto,
   eliminarTipoGasto,
   inicializarCatalogoTipoGastoSiVacio,
+  TipoGastoEnUsoError,
 } from '../services';
 import { showAlert } from '../utils';
 
@@ -179,7 +180,11 @@ export const TiposGastoScreen: React.FC = () => {
       await cargarTipos();
     } catch (error) {
       console.error('Error al eliminar:', error);
-      showAlert('Error', 'No se pudo eliminar el tipo de gasto.');
+      if (error instanceof TipoGastoEnUsoError) {
+        showAlert('Categoría en uso', error.message);
+      } else {
+        showAlert('Error', 'No se pudo eliminar el tipo de gasto.');
+      }
       setCargando(false);
     } finally {
       setConfirmEliminarVisible(false);
@@ -435,7 +440,7 @@ export const TiposGastoScreen: React.FC = () => {
                 <Text style={styles.confirmTextBold}>"{tipoAEliminar?.nombre}"</Text>?
               </Text>
               <Text style={styles.confirmSubtext}>
-                Los gastos previamente registrados con este concepto podrían verse afectados.
+                Solo se puede eliminar si no hay gastos registrados con esta categoría.
               </Text>
 
               <View style={styles.modalFooter}>
