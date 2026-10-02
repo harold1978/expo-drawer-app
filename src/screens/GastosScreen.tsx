@@ -27,6 +27,7 @@ import {
 import {
   obtenerGastosPorCamada,
   crearGasto,
+  actualizarGasto,
   eliminarGasto,
   obtenerResumenGastosPorCategoria,
   type IResumenCategoria,
@@ -103,6 +104,7 @@ export const GastosScreen: React.FC = () => {
   const [modalTipoVisible, setModalTipoVisible] = useState(false);
   const [confirmEliminarVisible, setConfirmEliminarVisible] = useState(false);
   const [gastoAEliminar, setGastoAEliminar] = useState<Gasto | null>(null);
+  const [gastoEnEdicion, setGastoEnEdicion] = useState<Gasto | null>(null);
 
   // ── Formulario ──────────────────────────────────────────
   const [form, setForm] = useState<FormGasto>(FORM_INICIAL);
@@ -245,14 +247,22 @@ export const GastosScreen: React.FC = () => {
 
     try {
       setGuardando(true);
-      await crearGasto(nuevoGasto);
+      if (gastoEnEdicion?.id) {
+        await actualizarGasto(gastoEnEdicion.id, nuevoGasto);
+      } else {
+        await crearGasto(nuevoGasto);
+      }
       setModalFormVisible(false);
+      setGastoEnEdicion(null);
       setForm(FORM_INICIAL);
       setErrores({});
       await cargarGastos(camadaSeleccionada.id);
     } catch (error) {
       console.error('Error al guardar gasto:', error);
-      showAlert('Error', 'No se pudo registrar el gasto. Intenta de nuevo.');
+      showAlert(
+        'Error',
+        error instanceof Error ? error.message : 'No se pudo guardar el gasto. Intenta de nuevo.',
+      );
     } finally {
       setGuardando(false);
     }
@@ -308,9 +318,30 @@ export const GastosScreen: React.FC = () => {
       showAlert('Sin camada', 'Selecciona una camada antes de registrar un gasto.');
       return;
     }
+    setGastoEnEdicion(null);
     setForm(FORM_INICIAL);
     setErrores({});
     setModalFormVisible(true);
+  };
+
+  const abrirEdicionGasto = (gasto: Gasto) => {
+    setGastoEnEdicion(gasto);
+    setForm({
+      tipoGastoId: gasto.tipoGastoId,
+      tipoGastoNombre: gasto.tipoGastoNombre || '',
+      precio: String(gasto.precio),
+      proveedor: gasto.proveedor,
+      fecha: formatDate(gasto.fecha),
+    });
+    setErrores({});
+    setModalFormVisible(true);
+  };
+
+  const cerrarModalForm = () => {
+    setModalFormVisible(false);
+    setGastoEnEdicion(null);
+    setForm(FORM_INICIAL);
+    setErrores({});
   };
 
   // ═══════════════════════════════════════════════════════
@@ -335,13 +366,24 @@ export const GastosScreen: React.FC = () => {
       </View>
       <View style={styles.gastoRight}>
         <Text style={styles.gastoPrecio}>{formatCurrency(item.precio)}</Text>
-        <TouchableOpacity
-          style={styles.eliminarBtn}
-          onPress={() => handleEliminar(item)}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="trash-outline" size={16} color="#EF4444" />
-        </TouchableOpacity>
+        <View style={styles.gastoActions}>
+          <TouchableOpacity
+            style={styles.editarBtn}
+            onPress={() => abrirEdicionGasto(item)}
+            activeOpacity={0.7}
+            accessibilityLabel={`Editar gasto de ${formatCurrency(item.precio)}`}
+          >
+            <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.eliminarBtn}
+            onPress={() => handleEliminar(item)}
+            activeOpacity={0.7}
+            accessibilityLabel={`Eliminar gasto de ${formatCurrency(item.precio)}`}
+          >
+            <Ionicons name="trash-outline" size={16} color="#EF4444" />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -607,7 +649,7 @@ export const GastosScreen: React.FC = () => {
         visible={modalFormVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setModalFormVisible(false)}
+        onRequestClose={cerrarModalForm}
       >
         <View style={styles.modalOverlay}>
           <ScrollView
@@ -616,8 +658,10 @@ export const GastosScreen: React.FC = () => {
           >
             <View style={[styles.modalContent, { maxWidth: 520, width: '100%' }]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Nuevo Gasto</Text>
-                <TouchableOpacity onPress={() => setModalFormVisible(false)}>
+                <Text style={styles.modalTitle}>
+                  {gastoEnEdicion ? 'Editar Gasto' : 'Nuevo Gasto'}
+                </Text>
+                <TouchableOpacity onPress={cerrarModalForm}>
                   <Ionicons name="close" size={24} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -711,7 +755,7 @@ export const GastosScreen: React.FC = () => {
               <View style={styles.modalFooter}>
                 <TouchableOpacity
                   style={styles.cancelBtn}
-                  onPress={() => setModalFormVisible(false)}
+                  onPress={cerrarModalForm}
                   disabled={guardando}
                 >
                   <Text style={styles.cancelBtnText}>Cancelar</Text>
@@ -726,7 +770,9 @@ export const GastosScreen: React.FC = () => {
                   ) : (
                     <>
                       <Ionicons name="checkmark" size={18} color="#FFF" />
-                      <Text style={styles.guardarBtnText}>Registrar Gasto</Text>
+                      <Text style={styles.guardarBtnText}>
+                        {gastoEnEdicion ? 'Guardar Cambios' : 'Registrar Gasto'}
+                      </Text>
                     </>
                   )}
                 </TouchableOpacity>
@@ -1083,6 +1129,11 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     gap: 8,
   },
+  gastoActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   gastoPrecio: {
     fontSize: 16,
     fontWeight: '700',
@@ -1091,6 +1142,11 @@ const styles = StyleSheet.create({
   eliminarBtn: {
     padding: 6,
     backgroundColor: '#FEF2F2',
+    borderRadius: 8,
+  },
+  editarBtn: {
+    padding: 6,
+    backgroundColor: COLORS.primaryLight,
     borderRadius: 8,
   },
 

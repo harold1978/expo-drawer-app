@@ -79,6 +79,89 @@ export const crearGasto = async (gasto: NuevoGastoInput): Promise<string> => {
   return nuevoGastoDoc.id;
 };
 
+export const actualizarGasto = async (
+  gastoId: string,
+  gastoActualizado: NuevoGastoInput,
+): Promise<void> => {
+  if (!gastoActualizado.camadaId?.trim()) {
+    throw new Error('Debes seleccionar una camada para el gasto.');
+  }
+  if (!gastoActualizado.tipoGastoId?.trim()) {
+    throw new Error('Debes seleccionar un tipo de gasto válido.');
+  }
+
+  const precioNuevo = Number(gastoActualizado.precio);
+  if (!Number.isFinite(precioNuevo) || precioNuevo <= 0) {
+    throw new Error('El monto del gasto debe ser mayor a cero.');
+  }
+  if (!gastoActualizado.proveedor.trim()) {
+    throw new Error('El proveedor no puede estar vacío.');
+  }
+  if (
+    !(gastoActualizado.fecha instanceof Date) ||
+    Number.isNaN(gastoActualizado.fecha.getTime())
+  ) {
+    throw new Error('La fecha del gasto no es válida.');
+  }
+
+  await runTransaction(db, async (transaction) => {
+    const gastoDoc = doc(db, 'gastos', gastoId);
+    const gastoSnapshot = await transaction.get(gastoDoc);
+    if (!gastoSnapshot.exists())
+      throw new Error('El gasto ya no existe. Actualiza la lista.');
+
+    const gastoAnterior = gastoSnapshot.data();
+    const camadaAnteriorId = String(gastoAnterior.camadaId || '').trim();
+    if (!camadaAnteriorId)
+      throw new Error('El gasto no tiene una camada asociada.');
+
+    const tipoGastoDoc = doc(db, 'tipos_gasto', gastoActualizado.tipoGastoId);
+    const camadaNuevaDoc = doc(db, 'camadas', gastoActualizado.camadaId);
+    const [tipoGastoSnapshot, camadaNuevaSnapshot] = await Promise.all([
+      transaction.get(tipoGastoDoc),
+      transaction.get(camadaNuevaDoc),
+    ]);
+    if (!tipoGastoSnapshot.exists())
+      throw new Error('El tipo de gasto seleccionado ya no existe.');
+    if (!camadaNuevaSnapshot.exists())
+      throw new Error('La camada seleccionada ya no existe.');
+
+    const camadaAnteriorDoc = doc(db, 'camadas', camadaAnteriorId);
+    const camadaAnteriorSnapshot =
+      camadaAnteriorId === gastoActualizado.camadaId
+        ? camadaNuevaSnapshot
+        : await transaction.get(camadaAnteriorDoc);
+    if (!camadaAnteriorSnapshot.exists())
+      throw new Error('La camada anterior asociada al gasto ya no existe.');
+
+    const precioAnterior = Number(gastoAnterior.precio) || 0;
+    const tipoGastoNombre = String(
+      tipoGastoSnapshot.data().nombre || '',
+    ).trim();
+
+    transaction.update(gastoDoc, {
+      ...gastoToFirestore({
+        ...gastoActualizado,
+        proveedor: gastoActualizado.proveedor.trim(),
+        tipoGastoNombre,
+      }),
+    });
+
+    if (camadaAnteriorId === gastoActualizado.camadaId) {
+      transaction.update(camadaNuevaDoc, {
+        totalGastos: increment(precioNuevo - precioAnterior),
+      });
+    } else {
+      transaction.update(camadaAnteriorDoc, {
+        totalGastos: increment(-Math.abs(precioAnterior)),
+      });
+      transaction.update(camadaNuevaDoc, {
+        totalGastos: increment(precioNuevo),
+      });
+    }
+  });
+};
+
 /**
  * Obtiene todos los gastos pertenecientes a una camada específica.
  */
@@ -176,6 +259,7 @@ export const obtenerResumenGastosPorCategoria = async (
  */
 export const GastoService = {
   crear: crearGasto,
+  actualizar: actualizarGasto,
   obtenerTodos: obtenerTodosLosGastos,
   obtenerPorCamada: obtenerGastosPorCamada,
   obtenerPorProveedor: obtenerGastosPorProveedor,
