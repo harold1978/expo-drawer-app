@@ -4,6 +4,8 @@ import type { RouteProp } from '@react-navigation/native';
 export type RootDrawerParamList = {
   Home: undefined;
   Camadas: undefined;
+  Clientes: undefined;
+  Ventas: { camadaId?: string } | undefined;
   Gastos: { camadaId?: string } | undefined;
   TiposGasto: undefined;
   Profile: { userId?: string };

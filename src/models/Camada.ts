@@ -1,4 +1,5 @@
 import { DocumentData, Timestamp } from 'firebase/firestore';
+import { formatCurrency } from '../utils/format';
 
 /**
  * Interfaz que representa una Camada (Lote de pollos).
@@ -15,6 +16,7 @@ export interface Camada {
   activa: boolean;
   venta: boolean;
   totalGastos: number;
+  costoOperacionPorKg: number;
   createdAt?: Date;
 }
 
@@ -38,23 +40,29 @@ export type NuevaCamadaInput = Omit<
 /**
  * Retorna la cantidad de aves vivas actualmente.
  */
-export const obtenerPollosVivos = (camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'>): number => {
+export const obtenerPollosVivos = (
+  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'>,
+): number => {
   return Math.max(0, camada.cantidadPollos - camada.cantidadMuertes);
 };
 
 /**
  * Retorna el porcentaje de mortalidad acumulado de la camada.
  */
-export const obtenerTasaMortalidad = (camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'>): number => {
+export const obtenerTasaMortalidad = (
+  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'>,
+): number => {
   if (camada.cantidadPollos <= 0) return 0;
-  return Number(((camada.cantidadMuertes / camada.cantidadPollos) * 100).toFixed(2));
+  return Number(
+    ((camada.cantidadMuertes / camada.cantidadPollos) * 100).toFixed(2),
+  );
 };
 
 /**
  * Retorna el costo acumulado por cada ave viva disponible.
  */
 export const obtenerCostoPorPolloVivo = (
-  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes' | 'totalGastos'>
+  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes' | 'totalGastos'>,
 ): number => {
   const vivos = obtenerPollosVivos(camada);
   if (vivos <= 0) return 0;
@@ -88,7 +96,7 @@ export const calcularMetricasCamada = (camada: Camada) => {
     tasaMortalidadTexto: `${mortalidad}%`,
     costoTotalGastos: camada.totalGastos,
     costoPorPolloVivo: costoUnitario,
-    costoPorPolloVivoTexto: `$${costoUnitario}`,
+    costoPorPolloVivoTexto: formatCurrency(costoUnitario),
     diasDeCria: dias,
   };
 };
@@ -98,12 +106,14 @@ export const calcularMetricasCamada = (camada: Camada) => {
 // ==========================================
 
 export const camadaToFirestore = (
-  camada: NuevaCamadaInput | Partial<Camada>
+  camada: NuevaCamadaInput | Partial<Camada>,
 ): Record<string, any> => {
   return {
     nombre: camada.nombre,
     cantidadPollos: Number(camada.cantidadPollos) || 0,
-    fechaIngreso: camada.fechaIngreso ? Timestamp.fromDate(camada.fechaIngreso) : Timestamp.now(),
+    fechaIngreso: camada.fechaIngreso
+      ? Timestamp.fromDate(camada.fechaIngreso)
+      : Timestamp.now(),
     fechaCambioAlimentoDesarrollo: camada.fechaCambioAlimentoDesarrollo
       ? Timestamp.fromDate(camada.fechaCambioAlimentoDesarrollo)
       : null,
@@ -117,6 +127,7 @@ export const camadaToFirestore = (
     activa: camada.activa ?? true,
     venta: camada.venta ?? false,
     totalGastos: camada.totalGastos ?? 0,
+    costoOperacionPorKg: Number(camada.costoOperacionPorKg) || 0,
   };
 };
 
@@ -125,7 +136,8 @@ export const camadaFromFirestore = (id: string, data: DocumentData): Camada => {
     if (!val) return null;
     if (val instanceof Timestamp) return val.toDate();
     if (val?.toDate && typeof val.toDate === 'function') return val.toDate();
-    if (typeof val === 'string' || typeof val === 'number') return new Date(val);
+    if (typeof val === 'string' || typeof val === 'number')
+      return new Date(val);
     return null;
   };
 
@@ -141,6 +153,7 @@ export const camadaFromFirestore = (id: string, data: DocumentData): Camada => {
     activa: data.activa ?? true,
     venta: data.venta ?? false,
     totalGastos: Number(data.totalGastos) || 0,
+    costoOperacionPorKg: Number(data.costoOperacionPorKg) || 0,
     createdAt: toDate(data.createdAt) || new Date(),
   };
 };

@@ -24,17 +24,19 @@ import {
 import {
     actualizarCamada,
     CamadaConGastosError,
+    CamadaConVentasError,
     crearCamada,
     eliminarCamada,
     obtenerTodasLasCamadas,
     registrarBajasCamada,
 } from '../services/CamadaService';
 import type { RootDrawerNavigationProp } from '../navigation/types';
-import { showAlert } from '../utils';
+import { formatCurrency, formatDate, parseDateInput, showAlert } from '../utils';
 
 interface FormCamada {
     nombre: string;
     cantidadPollos: string;
+    costoOperacionPorKg: string;
     fechaIngreso: string;
     fechaCambioAlimentoDesarrollo: string;
     fechaCambioAlimentoEngorde: string;
@@ -44,42 +46,22 @@ interface FormCamada {
 type CampoCamada = keyof FormCamada;
 
 const fechaAInput = (fecha?: Date | null): string => {
-    if (!fecha) return '';
-    const year = fecha.getFullYear();
-    const month = String(fecha.getMonth() + 1).padStart(2, '0');
-    const day = String(fecha.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
+    return fecha ? formatDate(fecha) : '';
 };
 
-const fechaDesdeInput = (valor: string): Date | null => {
-    if (!valor) return null;
-    const fecha = new Date(`${valor}T12:00:00`);
-    return Number.isNaN(fecha.getTime()) ? null : fecha;
-};
+const fechaDesdeInput = parseDateInput;
 
 const fechaInicial = (): string => fechaAInput(new Date());
 
 const formularioVacio = (): FormCamada => ({
     nombre: '',
     cantidadPollos: '',
+    costoOperacionPorKg: '',
     fechaIngreso: fechaInicial(),
     fechaCambioAlimentoDesarrollo: '',
     fechaCambioAlimentoEngorde: '',
     fechaDesparasitacion: '',
 });
-
-const formatoMoneda = (valor: number): string =>
-    `$${valor.toLocaleString('es-MX', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    })}`;
-
-const formatoFecha = (fecha: Date): string =>
-    fecha.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
 
 export const CamadasScreen: React.FC = () => {
     const navigation = useNavigation<RootDrawerNavigationProp<'Camadas'>>();
@@ -128,6 +110,7 @@ export const CamadasScreen: React.FC = () => {
         setForm({
             nombre: camada.nombre,
             cantidadPollos: String(camada.cantidadPollos),
+            costoOperacionPorKg: String(camada.costoOperacionPorKg || 0),
             fechaIngreso: fechaAInput(camada.fechaIngreso),
             fechaCambioAlimentoDesarrollo: fechaAInput(camada.fechaCambioAlimentoDesarrollo),
             fechaCambioAlimentoEngorde: fechaAInput(camada.fechaCambioAlimentoEngorde),
@@ -152,8 +135,12 @@ export const CamadasScreen: React.FC = () => {
             nuevosErrores.cantidadPollos =
                 'La cantidad inicial no puede ser menor que las bajas registradas.';
         }
+        const costoOperacionPorKg = Number(form.costoOperacionPorKg.replace(',', '.'));
+        if (!form.costoOperacionPorKg || !Number.isFinite(costoOperacionPorKg) || costoOperacionPorKg < 0) {
+            nuevosErrores.costoOperacionPorKg = 'Ingresa un costo por kg válido, igual o mayor a cero.';
+        }
         if (!fechaIngreso) {
-            nuevosErrores.fechaIngreso = 'Ingresa una fecha válida con formato AAAA-MM-DD.';
+            nuevosErrores.fechaIngreso = 'Ingresa una fecha válida con formato dd-mm-yyyy.';
         }
 
         const fechasOpcionales: CampoCamada[] = [
@@ -163,7 +150,7 @@ export const CamadasScreen: React.FC = () => {
         ];
         fechasOpcionales.forEach((campo) => {
             if (form[campo] && !fechaDesdeInput(form[campo])) {
-                nuevosErrores[campo] = 'Usa el formato AAAA-MM-DD.';
+                nuevosErrores[campo] = 'Usa el formato dd-mm-yyyy.';
             }
         });
 
@@ -180,6 +167,7 @@ export const CamadasScreen: React.FC = () => {
         const datos: NuevaCamadaInput = {
             nombre: form.nombre.trim(),
             cantidadPollos: Number(form.cantidadPollos),
+            costoOperacionPorKg: Number(form.costoOperacionPorKg.replace(',', '.')),
             fechaIngreso,
             fechaCambioAlimentoDesarrollo: fechaDesdeInput(form.fechaCambioAlimentoDesarrollo),
             fechaCambioAlimentoEngorde: fechaDesdeInput(form.fechaCambioAlimentoEngorde),
@@ -263,8 +251,8 @@ export const CamadasScreen: React.FC = () => {
             await eliminarCamada(camada.id);
             await cargarCamadas();
         } catch (error) {
-            if (error instanceof CamadaConGastosError) {
-                showAlert('Camada con gastos', error.message);
+            if (error instanceof CamadaConGastosError || error instanceof CamadaConVentasError) {
+                showAlert('Camada con movimientos', error.message);
             } else {
                 console.error('Error al eliminar camada:', error);
                 showAlert('Error', 'No se pudo eliminar la camada.');
@@ -294,7 +282,7 @@ export const CamadasScreen: React.FC = () => {
                 style={[styles.input, errores[campo] ? styles.inputError : null]}
                 value={form[campo]}
                 onChangeText={(valor) => actualizarCampo(campo, valor)}
-                placeholder="AAAA-MM-DD"
+                placeholder="dd-mm-yyyy"
                 placeholderTextColor={COLORS.textSecondary}
                 maxLength={10}
             />
@@ -310,7 +298,7 @@ export const CamadasScreen: React.FC = () => {
                     <View style={styles.titleBlock}>
                         <Text style={styles.camadaName}>{camada.nombre}</Text>
                         <Text style={styles.camadaMeta}>
-                            Ingreso {formatoFecha(camada.fechaIngreso)} · {camada.cantidadPollos} aves iniciales
+                            Ingreso {formatDate(camada.fechaIngreso)} · {camada.cantidadPollos} aves iniciales
                         </Text>
                     </View>
                     <View style={[styles.status, camada.activa ? styles.statusActive : styles.statusClosed]}>
@@ -330,11 +318,11 @@ export const CamadasScreen: React.FC = () => {
                         <Text style={styles.metricLabel}>Bajas ({metricas.tasaMortalidad}%)</Text>
                     </View>
                     <View style={styles.metric}>
-                        <Text style={styles.metricValue}>{formatoMoneda(camada.totalGastos)}</Text>
+                        <Text style={styles.metricValue}>{formatCurrency(camada.totalGastos)}</Text>
                         <Text style={styles.metricLabel}>Gastos</Text>
                     </View>
                     <View style={styles.metric}>
-                        <Text style={styles.metricValue}>{formatoMoneda(metricas.costoPorPolloVivo)}</Text>
+                        <Text style={styles.metricValue}>{formatCurrency(metricas.costoPorPolloVivo)}</Text>
                         <Text style={styles.metricLabel}>Costo por ave viva</Text>
                     </View>
                 </View>
@@ -343,6 +331,13 @@ export const CamadasScreen: React.FC = () => {
                     <TouchableOpacity style={styles.actionButton} onPress={() => abrirGastos(camada)}>
                         <Ionicons name="receipt-outline" size={17} color={COLORS.primary} />
                         <Text style={styles.actionPrimary}>Ver gastos</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => camada.id && navigation.navigate('Ventas', { camadaId: camada.id })}
+                    >
+                        <Ionicons name="cart-outline" size={17} color={COLORS.primary} />
+                        <Text style={styles.actionPrimary}>Ver ventas</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.iconButton} onPress={() => abrirEditar(camada)} accessibilityLabel="Editar camada">
                         <Ionicons name="pencil-outline" size={18} color={COLORS.textSecondary} />
@@ -434,6 +429,18 @@ export const CamadasScreen: React.FC = () => {
                                 <Text style={styles.label}>Aves iniciales *</Text>
                                 <TextInput style={[styles.input, errores.cantidadPollos ? styles.inputError : null]} value={form.cantidadPollos} onChangeText={(valor) => actualizarCampo('cantidadPollos', valor)} keyboardType="number-pad" placeholder="Ej. 500" placeholderTextColor={COLORS.textSecondary} />
                                 {errores.cantidadPollos ? <Text style={styles.errorText}>{errores.cantidadPollos}</Text> : null}
+                            </View>
+                            <View style={styles.field}>
+                                <Text style={styles.label}>Costo de operación por kg *</Text>
+                                <TextInput
+                                    style={[styles.input, errores.costoOperacionPorKg ? styles.inputError : null]}
+                                    value={form.costoOperacionPorKg}
+                                    onChangeText={(valor) => actualizarCampo('costoOperacionPorKg', valor)}
+                                    keyboardType="decimal-pad"
+                                    placeholder="Ej. 18.50"
+                                    placeholderTextColor={COLORS.textSecondary}
+                                />
+                                {errores.costoOperacionPorKg ? <Text style={styles.errorText}>{errores.costoOperacionPorKg}</Text> : null}
                             </View>
                             {campoFecha('fechaIngreso', 'Fecha de ingreso', true)}
                             <Text style={styles.sectionLabel}>Fechas de manejo (opcionales)</Text>

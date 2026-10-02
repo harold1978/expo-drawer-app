@@ -6,6 +6,8 @@ import { ProfileScreen } from '../screens/ProfileScreen';
 import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { CamadasScreen } from '../screens/CamadasScreen';
+import { ClientesScreen } from '../screens/ClientesScreen';
+import { VentasScreen } from '../screens/VentasScreen';
 import { GastosScreen } from '../screens/GastosScreen';
 import { TiposGastoScreen } from '../screens/TiposGastoScreen';
 import { CustomDrawerContent } from '../components/CustomDrawerContent';
@@ -71,6 +73,36 @@ export const DrawerNavigator: React.FC = () => {
           drawerIcon: ({ focused, color, size }) => (
             <Ionicons
               name={focused ? 'layers' : 'layers-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Clientes"
+        component={ClientesScreen}
+        options={{
+          title: 'Clientes',
+          drawerIcon: ({ focused, color, size }) => (
+            <Ionicons
+              name={focused ? 'people' : 'people-outline'}
+              size={size}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Drawer.Screen
+        name="Ventas"
+        component={VentasScreen}
+        options={{
+          title: 'Ventas',
+          drawerIcon: ({ focused, color, size }) => (
+            <Ionicons
+              name={focused ? 'cart' : 'cart-outline'}
               size={size}
               color={color}
             />

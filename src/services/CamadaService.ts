@@ -49,6 +49,15 @@ export class CamadaConGastosError extends Error {
   }
 }
 
+export class CamadaConVentasError extends Error {
+  constructor(cantidadVentas: number) {
+    super(
+      `No se puede eliminar la camada porque tiene ${cantidadVentas} ${cantidadVentas === 1 ? 'venta registrada' : 'ventas registradas'}.`,
+    );
+    this.name = 'CamadaConVentasError';
+  }
+}
+
 /**
  * Crea una nueva camada en Firestore.
  */
@@ -129,6 +138,9 @@ export const actualizarCamada = async (
   }
   if (datos.activa !== undefined) updatePayload.activa = datos.activa;
   if (datos.venta !== undefined) updatePayload.venta = datos.venta;
+  if (datos.costoOperacionPorKg !== undefined) {
+    updatePayload.costoOperacionPorKg = Number(datos.costoOperacionPorKg) || 0;
+  }
 
   await updateDoc(docRef, updatePayload);
 };
@@ -166,13 +178,15 @@ export const cambiarEstadoVentaCamada = async (
  * Elimina una camada.
  */
 export const eliminarCamada = async (camadaId: string): Promise<void> => {
-  const gastosQuery = query(
-    collection(db, 'gastos'),
-    where('camadaId', '==', camadaId),
-  );
-  const gastosSnapshot = await getDocs(gastosQuery);
+  const [gastosSnapshot, ventasSnapshot] = await Promise.all([
+    getDocs(query(collection(db, 'gastos'), where('camadaId', '==', camadaId))),
+    getDocs(query(collection(db, 'ventas'), where('camadaId', '==', camadaId))),
+  ]);
   if (!gastosSnapshot.empty) {
     throw new CamadaConGastosError(gastosSnapshot.size);
+  }
+  if (!ventasSnapshot.empty) {
+    throw new CamadaConVentasError(ventasSnapshot.size);
   }
 
   const docRef = doc(db, 'camadas', camadaId);

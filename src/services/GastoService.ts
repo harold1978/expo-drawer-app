@@ -27,6 +27,14 @@ export interface IResumenCategoria {
 
 const coleccionGastosRef = collection(db, 'gastos');
 
+export const obtenerTodosLosGastos = async (): Promise<Gasto[]> => {
+  const snapshot = await getDocs(coleccionGastosRef);
+  const gastos = snapshot.docs.map((documento) =>
+    gastoFromFirestore(documento.id, documento.data()),
+  );
+  return gastos.sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+};
+
 /**
  * Registra un gasto financiero e incrementa automáticamente el totalGastos de la camada.
  */
@@ -168,6 +176,7 @@ export const obtenerResumenGastosPorCategoria = async (
  */
 export const GastoService = {
   crear: crearGasto,
+  obtenerTodos: obtenerTodosLosGastos,
   obtenerPorCamada: obtenerGastosPorCamada,
   obtenerPorProveedor: obtenerGastosPorProveedor,
   eliminar: eliminarGasto,

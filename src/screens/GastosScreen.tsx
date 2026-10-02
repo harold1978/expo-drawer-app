@@ -32,7 +32,7 @@ import {
   type IResumenCategoria,
 } from '../services/GastoService';
 import { obtenerTiposGasto } from '../services/TipoGastoService';
-import { showAlert } from '../utils';
+import { formatCurrency, formatDate, parseDateInput, showAlert } from '../utils';
 import type { RootDrawerParamList } from '../navigation/types';
 
 const isWeb = Platform.OS === 'web';
@@ -40,30 +40,7 @@ const isWeb = Platform.OS === 'web';
 // ─────────────────────────────────────────────────────────
 // Utilitarios de formato
 // ─────────────────────────────────────────────────────────
-const formatFecha = (fecha: Date): string => {
-  return fecha.toLocaleDateString('es-MX', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-};
-
-const formatMoneda = (valor: number): string => {
-  return `$${valor.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-};
-
-const dateToInputValue = (date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-};
-
-const inputValueToDate = (value: string): Date | null => {
-  if (!value) return null;
-  const d = new Date(value + 'T12:00:00');
-  return isNaN(d.getTime()) ? null : d;
-};
+const inputValueToDate = parseDateInput;
 
 // ─────────────────────────────────────────────────────────
 // Estado inicial del formulario
@@ -73,7 +50,7 @@ interface FormGasto {
   tipoGastoNombre: string;
   precio: string;
   proveedor: string;
-  fecha: string; // YYYY-MM-DD string para el input
+  fecha: string; // dd-mm-yyyy para el input
 }
 
 const FORM_INICIAL: FormGasto = {
@@ -81,7 +58,7 @@ const FORM_INICIAL: FormGasto = {
   tipoGastoNombre: '',
   precio: '',
   proveedor: '',
-  fecha: dateToInputValue(new Date()),
+  fecha: formatDate(new Date()),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -292,7 +269,7 @@ export const GastosScreen: React.FC = () => {
     } else {
       showAlert(
         'Eliminar Gasto',
-        `¿Eliminar "${gasto.tipoGastoNombre}" de ${formatMoneda(gasto.precio)}?\n\nEsto descontará el monto del total de la camada.`,
+        `¿Eliminar "${gasto.tipoGastoNombre}" de ${formatCurrency(gasto.precio)}?\n\nEsto descontará el monto del total de la camada.`,
         [
           { text: 'Cancelar', style: 'cancel' },
           {
@@ -353,11 +330,11 @@ export const GastosScreen: React.FC = () => {
         <View style={styles.gastoInfo}>
           <Text style={styles.gastoTipo}>{item.tipoGastoNombre || 'Sin categoría'}</Text>
           <Text style={styles.gastoProveedor}>{item.proveedor}</Text>
-          <Text style={styles.gastoFecha}>{formatFecha(item.fecha)}</Text>
+          <Text style={styles.gastoFecha}>{formatDate(item.fecha)}</Text>
         </View>
       </View>
       <View style={styles.gastoRight}>
-        <Text style={styles.gastoPrecio}>{formatMoneda(item.precio)}</Text>
+        <Text style={styles.gastoPrecio}>{formatCurrency(item.precio)}</Text>
         <TouchableOpacity
           style={styles.eliminarBtn}
           onPress={() => handleEliminar(item)}
@@ -423,7 +400,7 @@ export const GastosScreen: React.FC = () => {
                     <Text
                       style={[styles.resumenTotal, { color: colorCategoria(index) }]}
                     >
-                      {formatMoneda(item.totalInvertido)}
+                      {formatCurrency(item.totalInvertido)}
                     </Text>
                     <Text style={styles.resumenMeta}>
                       {item.porcentaje}% · {item.cantidadCompras}{' '}
@@ -541,7 +518,7 @@ export const GastosScreen: React.FC = () => {
       {camadaSeleccionada && gastos.length > 0 && (
         <View style={styles.totalBanner}>
           <Text style={styles.totalBannerLabel}>Total invertido en esta camada</Text>
-          <Text style={styles.totalBannerValor}>{formatMoneda(totalGastosLocal)}</Text>
+          <Text style={styles.totalBannerValor}>{formatCurrency(totalGastosLocal)}</Text>
         </View>
       )}
 
@@ -608,7 +585,7 @@ export const GastosScreen: React.FC = () => {
                         </Text>
                         <Text style={styles.camadaOpcionMeta}>
                           {c.activa ? '🟢 Activa' : '🔴 Finalizada'} ·{' '}
-                          {c.cantidadPollos} pollos · {formatMoneda(c.totalGastos)}
+                          {c.cantidadPollos} pollos · {formatCurrency(c.totalGastos)}
                         </Text>
                       </View>
                     </View>
@@ -720,12 +697,12 @@ export const GastosScreen: React.FC = () => {
                   setForm((f) => ({ ...f, fecha: v }));
                   if (errores.fecha) setErrores((e) => ({ ...e, fecha: undefined }));
                 }}
-                placeholder="YYYY-MM-DD"
+                placeholder="dd-mm-yyyy"
                 placeholderTextColor={COLORS.textSecondary}
                 // En web, el input type="date" nativo funciona via placeholder
                 maxLength={10}
               />
-              <Text style={styles.inputHint}>Formato: YYYY-MM-DD (Ej. 2024-10-15)</Text>
+              <Text style={styles.inputHint}>Formato: dd-mm-yyyy (Ej. 15-10-2024)</Text>
               {errores.fecha && (
                 <Text style={styles.errorText}>{errores.fecha}</Text>
               )}
@@ -862,7 +839,7 @@ export const GastosScreen: React.FC = () => {
                   <Text style={styles.confirmText}>
                     ¿Eliminar el gasto de{' '}
                     <Text style={styles.confirmBold}>
-                      {formatMoneda(gastoAEliminar.precio)}
+                      {formatCurrency(gastoAEliminar.precio)}
                     </Text>{' '}
                     en{' '}
                     <Text style={styles.confirmBold}>
