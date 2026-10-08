@@ -119,6 +119,8 @@ export const HomeScreen: React.FC = () => {
         const totalGastos = gastosPeriodo.reduce((total, gasto) => total + gasto.precio, 0);
         const pollosIniciales = camadasActivas.reduce((total, camada) => total + camada.cantidadPollos, 0);
         const pollosVivos = camadasActivas.reduce((total, camada) => total + obtenerPollosVivos(camada), 0);
+        const avesDisponibles = camadasActivas.reduce((total, camada) => total + (camada.avesDisponibles || 0), 0);
+        const camadasSinStockConfig = camadasActivas.filter((camada) => camada.avesDisponibles === null).length;
         const muertes = camadasActivas.reduce((total, camada) => total + camada.cantidadMuertes, 0);
         const mortalidad = pollosIniciales > 0 ? (muertes / pollosIniciales) * 100 : 0;
 
@@ -168,6 +170,8 @@ export const HomeScreen: React.FC = () => {
             totalGastos,
             pollosIniciales,
             pollosVivos,
+            avesDisponibles,
+            camadasSinStockConfig,
             mortalidad,
             saldoPendiente: ventasPorCobrar.reduce((total, venta) => total + venta.saldoPendiente, 0),
             saldoVencido: ventasVencidas.reduce((total, venta) => total + venta.saldoPendiente, 0),
@@ -286,7 +290,11 @@ export const HomeScreen: React.FC = () => {
                     <SectionHeader title="Operación" subtitle="Estado de camadas activas" />
                     <View style={styles.metricStrip}>
                         <MiniMetric value={String(resumen.camadasActivas.length)} label="Camadas" />
-                        <MiniMetric value={formatNumber(resumen.pollosVivos)} label="Aves vivas" />
+                        <MiniMetric value={formatNumber(resumen.pollosIniciales)} label="Aves iniciales" />
+                        <MiniMetric
+                            value={formatNumber(resumen.avesDisponibles)}
+                            label={resumen.camadasSinStockConfig ? `Disponibles · ${resumen.camadasSinStockConfig} sin configurar` : 'Aves disponibles para venta'}
+                        />
                         <MiniMetric value={`${resumen.mortalidad.toFixed(1)}%`} label="Mortalidad" />
                     </View>
                     {resumen.camadaCritica ? (

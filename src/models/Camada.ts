@@ -17,6 +17,7 @@ export interface Camada {
   venta: boolean;
   totalGastos: number;
   costoOperacionPorKg: number;
+  avesDisponibles: number | null;
   createdAt?: Date;
 }
 
@@ -25,12 +26,19 @@ export interface Camada {
  */
 export type NuevaCamadaInput = Omit<
   Camada,
-  'id' | 'cantidadMuertes' | 'activa' | 'venta' | 'totalGastos' | 'createdAt'
+  | 'id'
+  | 'cantidadMuertes'
+  | 'activa'
+  | 'venta'
+  | 'totalGastos'
+  | 'avesDisponibles'
+  | 'createdAt'
 > & {
   cantidadMuertes?: number;
   activa?: boolean;
   venta?: boolean;
   totalGastos?: number;
+  avesDisponibles?: number;
 };
 
 // ==========================================
@@ -41,8 +49,13 @@ export type NuevaCamadaInput = Omit<
  * Retorna la cantidad de aves vivas actualmente.
  */
 export const obtenerPollosVivos = (
-  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'>,
+  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes'> &
+    Partial<Pick<Camada, 'avesDisponibles'>>,
 ): number => {
+  if (camada.avesDisponibles === null) return 0;
+  if (camada.avesDisponibles !== undefined) {
+    return Math.max(0, camada.avesDisponibles);
+  }
   return Math.max(0, camada.cantidadPollos - camada.cantidadMuertes);
 };
 
@@ -62,7 +75,8 @@ export const obtenerTasaMortalidad = (
  * Retorna el costo acumulado por cada ave viva disponible.
  */
 export const obtenerCostoPorPolloVivo = (
-  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes' | 'totalGastos'>,
+  camada: Pick<Camada, 'cantidadPollos' | 'cantidadMuertes' | 'totalGastos'> &
+    Partial<Pick<Camada, 'avesDisponibles'>>,
 ): number => {
   const vivos = obtenerPollosVivos(camada);
   if (vivos <= 0) return 0;
@@ -128,6 +142,8 @@ export const camadaToFirestore = (
     venta: camada.venta ?? false,
     totalGastos: camada.totalGastos ?? 0,
     costoOperacionPorKg: Number(camada.costoOperacionPorKg) || 0,
+    avesDisponibles:
+      camada.avesDisponibles ?? (Number(camada.cantidadPollos) || 0),
   };
 };
 
@@ -154,6 +170,10 @@ export const camadaFromFirestore = (id: string, data: DocumentData): Camada => {
     venta: data.venta ?? false,
     totalGastos: Number(data.totalGastos) || 0,
     costoOperacionPorKg: Number(data.costoOperacionPorKg) || 0,
+    avesDisponibles:
+      data.avesDisponibles === undefined || data.avesDisponibles === null
+        ? null
+        : Math.max(0, Math.floor(Number(data.avesDisponibles) || 0)),
     createdAt: toDate(data.createdAt) || new Date(),
   };
 };

@@ -25,13 +25,20 @@ import {
 } from '../models/Venta';
 import { obtenerCamadasActivas } from '../services/CamadaService';
 import { obtenerClientes } from '../services/ClienteService';
-import { crearVenta, obtenerVentas, registrarAbonoVenta } from '../services/VentaService';
+import {
+    actualizarVenta,
+    crearVenta,
+    eliminarVenta,
+    obtenerVentas,
+    registrarAbonoVenta,
+} from '../services/VentaService';
 import type { RootDrawerNavigationProp, RootDrawerParamList } from '../navigation/types';
 import { formatCurrency, formatDate, formatNumber, parseDateInput, showAlert } from '../utils';
 
 interface FormVenta {
     clienteId: string;
     camadaId: string;
+    cantidadAves: string;
     pesoKg: string;
     precioPorKg: string;
     modalidad: ModalidadVenta;
@@ -48,6 +55,7 @@ const fechaTexto = formatDate;
 const formularioVacio = (): FormVenta => ({
     clienteId: '',
     camadaId: '',
+    cantidadAves: '',
     pesoKg: '',
     precioPorKg: '',
     modalidad: 'contado',
@@ -67,6 +75,7 @@ export const VentasScreen: React.FC = () => {
     const [refrescando, setRefrescando] = useState(false);
     const [guardando, setGuardando] = useState(false);
     const [modalVentaVisible, setModalVentaVisible] = useState(false);
+    const [ventaEditando, setVentaEditando] = useState<Venta | null>(null);
     const [modalSelector, setModalSelector] = useState<'cliente' | 'camada' | null>(null);
     const [form, setForm] = useState<FormVenta>(formularioVacio);
     const [errorForm, setErrorForm] = useState('');
@@ -101,11 +110,12 @@ export const VentasScreen: React.FC = () => {
 
     const clienteSeleccionado = clientes.find((cliente) => cliente.id === form.clienteId);
     const camadaSeleccionada = camadas.find((camada) => camada.id === form.camadaId);
+    const costoOperacionPorKg = ventaEditando?.costoOperacionPorKg ?? camadaSeleccionada?.costoOperacionPorKg ?? 0;
     const pesoPreview = Number(form.pesoKg.replace(',', '.')) || 0;
     const precioPreview = Number(form.precioPorKg.replace(',', '.')) || 0;
     const calculoPreview = useMemo(
-        () => calcularImportesVenta(pesoPreview, precioPreview, camadaSeleccionada?.costoOperacionPorKg || 0),
-        [pesoPreview, precioPreview, camadaSeleccionada],
+        () => calcularImportesVenta(pesoPreview, precioPreview, costoOperacionPorKg),
+        [pesoPreview, precioPreview, costoOperacionPorKg],
     );
 
     const ventasVisibles = useMemo(
@@ -130,12 +140,42 @@ export const VentasScreen: React.FC = () => {
             navigation.navigate('Camadas');
             return;
         }
+        if (camadas.every((camada) => camada.avesDisponibles === null || camada.avesDisponibles <= 0)) {
+            showAlert('Sin aves disponibles', 'Configura las aves vivas de una camada antes de registrar ventas.');
+            navigation.navigate('Camadas');
+            return;
+        }
+        setVentaEditando(null);
         setForm({ ...formularioVacio(), camadaId: camadaFiltroId || '' });
         setErrorForm('');
         setModalVentaVisible(true);
     };
 
+    const abrirEdicionVenta = (venta: Venta) => {
+        setVentaEditando(venta);
+        setForm({
+            clienteId: venta.clienteId,
+            camadaId: venta.camadaId,
+            cantidadAves: String(venta.cantidadAves),
+            pesoKg: String(venta.pesoKg),
+            precioPorKg: String(venta.precioPorKg),
+            modalidad: venta.modalidad,
+            abonoInicial: String(venta.montoPagado),
+            fecha: formatDate(venta.fecha),
+            fechaVencimiento: venta.fechaVencimiento ? formatDate(venta.fechaVencimiento) : '',
+        });
+        setErrorForm('');
+        setModalVentaVisible(true);
+    };
+
+    const cerrarModalVenta = () => {
+        setModalVentaVisible(false);
+        setVentaEditando(null);
+        setErrorForm('');
+    };
+
     const guardarVenta = async () => {
+        const cantidadAves = Number(form.cantidadAves);
         const pesoKg = Number(form.pesoKg.replace(',', '.'));
         const precioPorKg = Number(form.precioPorKg.replace(',', '.'));
         const fecha = fechaDesdeInput(form.fecha);
@@ -146,8 +186,32 @@ export const VentasScreen: React.FC = () => {
             setErrorForm('Selecciona un cliente y una camada.');
             return;
         }
+        const ventaHistoricaSinConteo = ventaEditando?.cantidadAves === 0;
+        if (!Number.isInteger(cantidadAves) || cantidadAves < (ventaHistoricaSinConteo ? 0 : 1)) {
+            setErrorForm('La cantidad de aves vendidas debe ser un entero válido.');
+            return;
+        }
+        if (ventaHistoricaSinConteo && cantidadAves !== 0) {
+            setErrorForm('Esta venta antigua no tiene conteo de aves; no se puede cambiar su inventario con seguridad.');
+            return;
+        }
         if (!Number.isFinite(pesoKg) || pesoKg <= 0) {
             setErrorForm('El peso debe ser mayor a cero.');
+            return;
+        }
+        if (Number(pesoKg.toFixed(3)) !== pesoKg) {
+            setErrorForm('El peso admite un máximo de 3 decimales.');
+            return;
+        }
+        if (!ventaEditando && (!camadaSeleccionada || camadaSeleccionada.avesDisponibles === null)) {
+            setErrorForm('La camada no tiene aves disponibles configuradas. Actualízala en Camadas.');
+            return;
+        }
+        const stockDisponibleParaEditar = camadaSeleccionada?.avesDisponibles == null
+            ? null
+            : camadaSeleccionada.avesDisponibles + (ventaEditando?.cantidadAves || 0);
+        if (stockDisponibleParaEditar !== null && cantidadAves > stockDisponibleParaEditar) {
+            setErrorForm(`Stock insuficiente: quedan ${formatNumber(stockDisponibleParaEditar)} aves disponibles al revertir esta venta.`);
             return;
         }
         if (!Number.isFinite(precioPorKg) || precioPorKg <= 0) {
@@ -169,17 +233,31 @@ export const VentasScreen: React.FC = () => {
 
         try {
             setGuardando(true);
-            await crearVenta({
-                clienteId: form.clienteId,
-                camadaId: form.camadaId,
-                fecha,
-                pesoKg,
-                precioPorKg,
-                modalidad: form.modalidad,
-                abonoInicial: form.modalidad === 'contado' ? calculoPreview.totalVenta : abonoInicial,
-                fechaVencimiento: form.modalidad === 'credito' ? fechaVencimiento : null,
-            });
+            if (ventaEditando?.id) {
+                await actualizarVenta(ventaEditando.id, {
+                    clienteId: form.clienteId,
+                    fecha,
+                    cantidadAves,
+                    pesoKg,
+                    precioPorKg,
+                    modalidad: form.modalidad,
+                    fechaVencimiento: form.modalidad === 'credito' ? fechaVencimiento : null,
+                });
+            } else {
+                await crearVenta({
+                    clienteId: form.clienteId,
+                    camadaId: form.camadaId,
+                    fecha,
+                    cantidadAves,
+                    pesoKg,
+                    precioPorKg,
+                    modalidad: form.modalidad,
+                    abonoInicial: form.modalidad === 'contado' ? calculoPreview.totalVenta : abonoInicial,
+                    fechaVencimiento: form.modalidad === 'credito' ? fechaVencimiento : null,
+                });
+            }
             setModalVentaVisible(false);
+            setVentaEditando(null);
             await cargarDatos();
         } catch (error) {
             console.error('Error al registrar venta:', error);
@@ -205,6 +283,34 @@ export const VentasScreen: React.FC = () => {
             await cargarDatos();
         } catch (error) {
             showAlert('No se pudo registrar el abono', error instanceof Error ? error.message : 'Intenta de nuevo.');
+        } finally {
+            setGuardando(false);
+        }
+    };
+
+    const solicitarEliminacion = (venta: Venta) => {
+        if (!venta.id) return;
+        const devolucionStock = venta.cantidadAves > 0
+            ? `Se devolverán ${formatNumber(venta.cantidadAves)} aves al stock.`
+            : 'Esta venta no tiene conteo histórico de aves y no modificará el stock.';
+        showAlert(
+            'Eliminar venta',
+            `¿Eliminar la venta de ${venta.clienteNombre} por ${moneda(venta.totalVenta)}? ${devolucionStock} También se eliminará su historial de pagos.`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Eliminar', style: 'destructive', onPress: () => void confirmarEliminacion(venta) },
+            ],
+        );
+    };
+
+    const confirmarEliminacion = async (venta: Venta) => {
+        if (!venta.id) return;
+        try {
+            setGuardando(true);
+            await eliminarVenta(venta.id);
+            await cargarDatos();
+        } catch (error) {
+            showAlert('No se pudo eliminar la venta', error instanceof Error ? error.message : 'Intenta de nuevo.');
         } finally {
             setGuardando(false);
         }
@@ -239,7 +345,10 @@ export const VentasScreen: React.FC = () => {
                 </View>
             </View>
             <View style={styles.saleFacts}>
-                <Text style={styles.factText}>{formatNumber(venta.pesoKg)} kg × {moneda(venta.precioPorKg)}/kg</Text>
+                <Text style={styles.factText}>
+                    {venta.cantidadAves > 0 ? `${formatNumber(venta.cantidadAves)} aves · ` : ''}
+                    {formatNumber(venta.pesoKg)} kg × {moneda(venta.precioPorKg)}/kg
+                </Text>
                 <Text style={styles.factText}>Costo {moneda(venta.costoOperacion)} · Ganancia <Text style={styles.profit}>{moneda(venta.ganancia)}</Text></Text>
             </View>
             <View style={styles.saleFooter}>
@@ -258,6 +367,16 @@ export const VentasScreen: React.FC = () => {
                 )}
             </View>
             {venta.abonos.length > 0 ? <Text style={styles.paymentMeta}>{venta.abonos.length} {venta.abonos.length === 1 ? 'pago registrado' : 'pagos registrados'} · Acumulado {moneda(venta.montoPagado)}</Text> : null}
+            <View style={styles.saleActions}>
+                <TouchableOpacity style={styles.saleActionButton} onPress={() => abrirEdicionVenta(venta)} accessibilityLabel={`Editar venta de ${venta.clienteNombre}`}>
+                    <Ionicons name="pencil-outline" size={17} color={COLORS.primary} />
+                    <Text style={styles.saleActionText}>Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.saleActionButton, styles.deleteSaleButton]} onPress={() => solicitarEliminacion(venta)} accessibilityLabel={`Eliminar venta de ${venta.clienteNombre}`}>
+                    <Ionicons name="trash-outline" size={17} color="#C43D3D" />
+                    <Text style={styles.deleteSaleText}>Eliminar</Text>
+                </TouchableOpacity>
+            </View>
         </View>
     );
 
@@ -308,13 +427,13 @@ export const VentasScreen: React.FC = () => {
                 ) : ventasVisibles.map(renderVenta)}
             </ScrollView>
 
-            <Modal visible={modalVentaVisible} transparent animationType="fade" onRequestClose={() => setModalVentaVisible(false)}>
+            <Modal visible={modalVentaVisible} transparent animationType="fade" onRequestClose={cerrarModalVenta}>
                 <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
                     <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
                         <View style={styles.modal}>
                             <View style={styles.modalHeader}>
-                                <Text style={styles.modalTitle}>Nueva venta</Text>
-                                <TouchableOpacity onPress={() => setModalVentaVisible(false)} disabled={guardando} accessibilityLabel="Cerrar formulario"><Ionicons name="close" size={24} color={COLORS.textSecondary} /></TouchableOpacity>
+                                <Text style={styles.modalTitle}>{ventaEditando ? 'Editar venta' : 'Nueva venta'}</Text>
+                                <TouchableOpacity onPress={cerrarModalVenta} disabled={guardando} accessibilityLabel="Cerrar formulario"><Ionicons name="close" size={24} color={COLORS.textSecondary} /></TouchableOpacity>
                             </View>
 
                             <Text style={styles.label}>Cliente *</Text>
@@ -322,22 +441,52 @@ export const VentasScreen: React.FC = () => {
                                 <Text style={[styles.selectorText, !clienteSeleccionado && styles.placeholder]}>{clienteSeleccionado?.nombre || 'Seleccionar cliente'}</Text>
                                 <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
                             </TouchableOpacity>
-                            <Text style={styles.label}>Camada activa *</Text>
-                            <TouchableOpacity style={styles.selector} onPress={() => setModalSelector('camada')}>
-                                <Text style={[styles.selectorText, !camadaSeleccionada && styles.placeholder]}>{camadaSeleccionada?.nombre || 'Seleccionar camada'}</Text>
-                                <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
-                            </TouchableOpacity>
-                            {camadaSeleccionada ? <Text style={styles.rateHint}>Costo operativo: {moneda(camadaSeleccionada.costoOperacionPorKg || 0)}/kg</Text> : null}
+                            {ventaEditando ? (
+                                <View style={styles.field}>
+                                    <Text style={styles.label}>Camada</Text>
+                                    <Text style={styles.readOnlyValue}>{ventaEditando.camadaNombre}</Text>
+                                </View>
+                            ) : (
+                                <>
+                                    <Text style={styles.label}>Camada activa *</Text>
+                                    <TouchableOpacity style={styles.selector} onPress={() => setModalSelector('camada')}>
+                                        <Text style={[styles.selectorText, !camadaSeleccionada && styles.placeholder]}>{camadaSeleccionada?.nombre || 'Seleccionar camada'}</Text>
+                                        <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                            {ventaEditando ? (
+                                <Text style={styles.rateHint}>
+                                    Cobrado: {moneda(ventaEditando.montoPagado)} · Saldo actual: {moneda(ventaEditando.saldoPendiente)}
+                                </Text>
+                            ) : camadaSeleccionada ? (
+                                <Text style={styles.rateHint}>
+                                    Aves disponibles: {camadaSeleccionada.avesDisponibles === null ? 'sin configurar' : formatNumber(camadaSeleccionada.avesDisponibles)}
+                                    {' · '}Costo operativo: {moneda(camadaSeleccionada.costoOperacionPorKg || 0)}/kg
+                                </Text>
+                            ) : null}
 
                             <View style={styles.twoColumns}>
                                 <View style={styles.column}>
-                                    <Text style={styles.label}>Peso vendido (kg) *</Text>
-                                    <TextInput style={styles.input} value={form.pesoKg} onChangeText={(valor) => { setForm((actual) => ({ ...actual, pesoKg: valor })); setErrorForm(''); }} keyboardType="decimal-pad" placeholder="Ej. 125.5" placeholderTextColor={COLORS.textSecondary} />
+                                    <Text style={styles.label}>{ventaEditando?.cantidadAves === 0 ? 'Aves (dato histórico desconocido)' : 'Aves vendidas *'}</Text>
+                                    <TextInput
+                                        style={[styles.input, ventaEditando?.cantidadAves === 0 && styles.inputDisabled]}
+                                        value={form.cantidadAves}
+                                        onChangeText={(valor) => { setForm((actual) => ({ ...actual, cantidadAves: valor })); setErrorForm(''); }}
+                                        keyboardType="number-pad"
+                                        placeholder="Ej. 10"
+                                        placeholderTextColor={COLORS.textSecondary}
+                                        editable={ventaEditando?.cantidadAves !== 0}
+                                    />
                                 </View>
                                 <View style={styles.column}>
-                                    <Text style={styles.label}>Precio por kg *</Text>
-                                    <TextInput style={styles.input} value={form.precioPorKg} onChangeText={(valor) => { setForm((actual) => ({ ...actual, precioPorKg: valor })); setErrorForm(''); }} keyboardType="decimal-pad" placeholder="Ej. 48.00" placeholderTextColor={COLORS.textSecondary} />
+                                    <Text style={styles.label}>Peso total (kg) *</Text>
+                                    <TextInput style={styles.input} value={form.pesoKg} onChangeText={(valor) => { setForm((actual) => ({ ...actual, pesoKg: valor })); setErrorForm(''); }} keyboardType="decimal-pad" placeholder="Ej. 125.5" placeholderTextColor={COLORS.textSecondary} />
                                 </View>
+                            </View>
+                            <View style={styles.field}>
+                                <Text style={styles.label}>Precio por kg *</Text>
+                                <TextInput style={styles.input} value={form.precioPorKg} onChangeText={(valor) => { setForm((actual) => ({ ...actual, precioPorKg: valor })); setErrorForm(''); }} keyboardType="decimal-pad" placeholder="Ej. 48.00" placeholderTextColor={COLORS.textSecondary} />
                             </View>
                             {campoFecha('Fecha de venta *', form.fecha, (valor) => setForm((actual) => ({ ...actual, fecha: valor })))}
 
@@ -354,10 +503,12 @@ export const VentasScreen: React.FC = () => {
 
                             {form.modalidad === 'credito' ? (
                                 <>
-                                    <View style={styles.field}>
-                                        <Text style={styles.label}>Anticipo (opcional)</Text>
-                                        <TextInput style={styles.input} value={form.abonoInicial} onChangeText={(valor) => setForm((actual) => ({ ...actual, abonoInicial: valor }))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.textSecondary} />
-                                    </View>
+                                    {!ventaEditando ? (
+                                        <View style={styles.field}>
+                                            <Text style={styles.label}>Anticipo (opcional)</Text>
+                                            <TextInput style={styles.input} value={form.abonoInicial} onChangeText={(valor) => setForm((actual) => ({ ...actual, abonoInicial: valor }))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={COLORS.textSecondary} />
+                                        </View>
+                                    ) : null}
                                     {campoFecha('Fecha de vencimiento *', form.fechaVencimiento, (valor) => setForm((actual) => ({ ...actual, fechaVencimiento: valor })))}
                                 </>
                             ) : null}
@@ -367,13 +518,15 @@ export const VentasScreen: React.FC = () => {
                                 <View style={styles.calcRow}><Text style={styles.calcLabel}>Costo operativo</Text><Text style={styles.calcValue}>{moneda(calculoPreview.costoOperacion)}</Text></View>
                                 <View style={[styles.calcRow, styles.calcTotal]}><Text style={styles.calcProfitLabel}>Ganancia estimada</Text><Text style={styles.calcProfitValue}>{moneda(calculoPreview.ganancia)}</Text></View>
                             </View>
-                            {form.modalidad === 'contado' ? <Text style={styles.rateHint}>El pago de contado se registra como liquidado por el total.</Text> : null}
+                            {ventaEditando ? (
+                                <Text style={styles.rateHint}>Los pagos existentes se conservan. El nuevo total no puede ser menor a lo ya cobrado.</Text>
+                            ) : form.modalidad === 'contado' ? <Text style={styles.rateHint}>El pago de contado se registra como liquidado por el total.</Text> : null}
                             {errorForm ? <Text style={styles.errorText}>{errorForm}</Text> : null}
                             <View style={styles.modalActions}>
-                                <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVentaVisible(false)} disabled={guardando}><Text style={styles.cancelText}>Cancelar</Text></TouchableOpacity>
+                                <TouchableOpacity style={styles.cancelButton} onPress={cerrarModalVenta} disabled={guardando}><Text style={styles.cancelText}>Cancelar</Text></TouchableOpacity>
                                 <TouchableOpacity style={[styles.primaryButton, guardando && styles.disabled]} onPress={() => void guardarVenta()} disabled={guardando}>
                                     {guardando ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Ionicons name="checkmark" size={18} color="#FFFFFF" />}
-                                    <Text style={styles.primaryButtonText}>Guardar venta</Text>
+                                    <Text style={styles.primaryButtonText}>{ventaEditando ? 'Guardar cambios' : 'Guardar venta'}</Text>
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -393,11 +546,18 @@ export const VentasScreen: React.FC = () => {
                                 <TouchableOpacity key={cliente.id} style={styles.option} onPress={() => { setForm((actual) => ({ ...actual, clienteId: cliente.id || '' })); setModalSelector(null); }}>
                                     <Text style={styles.optionName}>{cliente.nombre}</Text><Text style={styles.optionMeta}>{cliente.telefono || 'Sin teléfono'}</Text>
                                 </TouchableOpacity>
-                            )) : camadas.map((camada) => (
-                                <TouchableOpacity key={camada.id} style={styles.option} onPress={() => { setForm((actual) => ({ ...actual, camadaId: camada.id || '' })); setModalSelector(null); }}>
-                                    <Text style={styles.optionName}>{camada.nombre}</Text><Text style={styles.optionMeta}>Operación {moneda(camada.costoOperacionPorKg || 0)}/kg</Text>
-                                </TouchableOpacity>
-                            ))}
+                            )) : camadas.map((camada) => {
+                                const sinStock = camada.avesDisponibles === null || camada.avesDisponibles <= 0;
+                                return (
+                                    <TouchableOpacity key={camada.id} disabled={sinStock} style={[styles.option, sinStock && styles.optionDisabled]} onPress={() => { setForm((actual) => ({ ...actual, camadaId: camada.id || '' })); setErrorForm(''); setModalSelector(null); }}>
+                                        <Text style={[styles.optionName, sinStock && styles.optionNameDisabled]}>{camada.nombre}</Text>
+                                        <Text style={styles.optionMeta}>
+                                            {camada.avesDisponibles === null ? 'Aves sin configurar' : `${formatNumber(camada.avesDisponibles)} aves disponibles`}
+                                            {' · '}Operación {moneda(camada.costoOperacionPorKg || 0)}/kg
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </ScrollView>
                     </View>
                 </View>
@@ -469,6 +629,11 @@ const styles = StyleSheet.create({
     outstandingButton: { minHeight: 38, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.primary, borderRadius: 7 },
     outstandingText: { color: COLORS.primary, fontSize: 12, fontWeight: '700' },
     paymentMeta: { marginTop: 8, color: COLORS.textSecondary, fontSize: 12 },
+    saleActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8, marginTop: 12, paddingTop: 10, borderTopWidth: 1, borderColor: COLORS.border },
+    saleActionButton: { minHeight: 34, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: COLORS.border, borderRadius: 7 },
+    saleActionText: { color: COLORS.primary, fontSize: 12, fontWeight: '600' },
+    deleteSaleButton: { borderColor: '#F0CCCC', backgroundColor: '#FFF8F8' },
+    deleteSaleText: { color: '#C43D3D', fontSize: 12, fontWeight: '600' },
     empty: { flex: 1, minHeight: 280, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 12 },
     emptyTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700' },
     overlay: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 16, backgroundColor: 'rgba(15, 23, 42, 0.48)' },
@@ -479,6 +644,8 @@ const styles = StyleSheet.create({
     label: { marginBottom: 7, color: COLORS.textPrimary, fontSize: 13, fontWeight: '600' },
     field: { marginBottom: 12 },
     input: { minHeight: 44, marginBottom: 13, paddingHorizontal: 12, color: COLORS.textPrimary, fontSize: 14, borderWidth: 1, borderColor: COLORS.border, borderRadius: 7 },
+    inputDisabled: { backgroundColor: '#F1F3F5', color: COLORS.textSecondary },
+    readOnlyValue: { minHeight: 42, justifyContent: 'center', paddingHorizontal: 11, color: COLORS.textSecondary, backgroundColor: '#F1F3F5', borderRadius: 7 },
     selector: { minHeight: 44, marginBottom: 13, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderColor: COLORS.border, borderRadius: 7 },
     selectorText: { color: COLORS.textPrimary, fontSize: 14 },
     placeholder: { color: COLORS.textSecondary },
@@ -503,7 +670,9 @@ const styles = StyleSheet.create({
     cancelText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
     optionsList: { maxHeight: 360 },
     option: { paddingVertical: 12, borderBottomWidth: 1, borderColor: COLORS.border },
+    optionDisabled: { opacity: 0.55 },
     optionName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
+    optionNameDisabled: { color: COLORS.textSecondary },
     optionMeta: { marginTop: 3, color: COLORS.textSecondary, fontSize: 12 },
     disabled: { opacity: 0.65 },
 });

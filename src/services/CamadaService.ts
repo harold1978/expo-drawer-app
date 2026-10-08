@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   increment,
+  runTransaction,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -64,8 +65,19 @@ export class CamadaConVentasError extends Error {
 export const crearCamada = async (
   camada: NuevaCamadaInput,
 ): Promise<string> => {
+  const cantidadPollos = Number(camada.cantidadPollos);
+  const avesDisponibles = camada.avesDisponibles ?? cantidadPollos;
+  if (
+    !Number.isInteger(avesDisponibles) ||
+    avesDisponibles < 0 ||
+    avesDisponibles > cantidadPollos
+  ) {
+    throw new Error(
+      'Las aves disponibles deben ser un entero entre cero y las aves iniciales.',
+    );
+  }
   const docRef = await addDoc(coleccionCamadasRef, {
-    ...camadaToFirestore(camada),
+    ...camadaToFirestore({ ...camada, avesDisponibles }),
     createdAt: serverTimestamp(),
   });
   return docRef.id;
@@ -141,6 +153,20 @@ export const actualizarCamada = async (
   if (datos.costoOperacionPorKg !== undefined) {
     updatePayload.costoOperacionPorKg = Number(datos.costoOperacionPorKg) || 0;
   }
+  if (datos.avesDisponibles !== undefined) {
+    if (datos.avesDisponibles === null) {
+      updatePayload.avesDisponibles = null;
+    } else if (
+      !Number.isInteger(datos.avesDisponibles) ||
+      datos.avesDisponibles < 0
+    ) {
+      throw new Error(
+        'Las aves disponibles deben ser un entero igual o mayor a cero.',
+      );
+    } else {
+      updatePayload.avesDisponibles = datos.avesDisponibles;
+    }
+  }
 
   await updateDoc(docRef, updatePayload);
 };
@@ -152,10 +178,36 @@ export const registrarBajasCamada = async (
   camadaId: string,
   bajasAdicionales: number,
 ): Promise<void> => {
-  if (bajasAdicionales <= 0) return;
+  if (!Number.isInteger(bajasAdicionales) || bajasAdicionales <= 0) {
+    throw new Error('La cantidad de bajas debe ser un entero mayor a cero.');
+  }
   const docRef = doc(db, 'camadas', camadaId);
-  await updateDoc(docRef, {
-    cantidadMuertes: increment(bajasAdicionales),
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(docRef);
+    if (!snapshot.exists()) throw new Error('La camada ya no existe.');
+    const camada = snapshot.data();
+    if (
+      camada.avesDisponibles === undefined ||
+      camada.avesDisponibles === null
+    ) {
+      throw new Error(
+        'Configura las aves disponibles de esta camada antes de registrar bajas.',
+      );
+    }
+    const avesDisponibles = Number(camada.avesDisponibles);
+    if (!Number.isInteger(avesDisponibles) || avesDisponibles < 0) {
+      throw new Error('El inventario actual de aves no es válido.');
+    }
+    if (bajasAdicionales > avesDisponibles) {
+      throw new Error(
+        `Solo hay ${avesDisponibles} aves disponibles para registrar como bajas.`,
+      );
+    }
+
+    transaction.update(docRef, {
+      cantidadMuertes: increment(bajasAdicionales),
+      avesDisponibles: avesDisponibles - bajasAdicionales,
+    });
   });
 };
 

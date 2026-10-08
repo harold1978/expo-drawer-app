@@ -31,11 +31,12 @@ import {
     registrarBajasCamada,
 } from '../services/CamadaService';
 import type { RootDrawerNavigationProp } from '../navigation/types';
-import { formatCurrency, formatDate, parseDateInput, showAlert } from '../utils';
+import { formatCurrency, formatDate, formatNumber, parseDateInput, showAlert } from '../utils';
 
 interface FormCamada {
     nombre: string;
     cantidadPollos: string;
+    avesDisponibles: string;
     costoOperacionPorKg: string;
     fechaIngreso: string;
     fechaCambioAlimentoDesarrollo: string;
@@ -56,6 +57,7 @@ const fechaInicial = (): string => fechaAInput(new Date());
 const formularioVacio = (): FormCamada => ({
     nombre: '',
     cantidadPollos: '',
+    avesDisponibles: '',
     costoOperacionPorKg: '',
     fechaIngreso: fechaInicial(),
     fechaCambioAlimentoDesarrollo: '',
@@ -110,6 +112,7 @@ export const CamadasScreen: React.FC = () => {
         setForm({
             nombre: camada.nombre,
             cantidadPollos: String(camada.cantidadPollos),
+            avesDisponibles: camada.avesDisponibles === null ? '' : String(camada.avesDisponibles),
             costoOperacionPorKg: String(camada.costoOperacionPorKg || 0),
             fechaIngreso: fechaAInput(camada.fechaIngreso),
             fechaCambioAlimentoDesarrollo: fechaAInput(camada.fechaCambioAlimentoDesarrollo),
@@ -134,6 +137,12 @@ export const CamadasScreen: React.FC = () => {
         } else if (camadaEditando && cantidad < camadaEditando.cantidadMuertes) {
             nuevosErrores.cantidadPollos =
                 'La cantidad inicial no puede ser menor que las bajas registradas.';
+        }
+        const avesDisponibles = Number(form.avesDisponibles);
+        if (camadaEditando && (!form.avesDisponibles.trim() || !Number.isInteger(avesDisponibles) || avesDisponibles < 0)) {
+            nuevosErrores.avesDisponibles = 'Ingresa un número entero de aves igual o mayor a cero.';
+        } else if (camadaEditando && avesDisponibles > cantidad - camadaEditando.cantidadMuertes) {
+            nuevosErrores.avesDisponibles = 'Las aves disponibles no pueden superar las aves vivas de la camada.';
         }
         const costoOperacionPorKg = Number(form.costoOperacionPorKg.replace(',', '.'));
         if (!form.costoOperacionPorKg || !Number.isFinite(costoOperacionPorKg) || costoOperacionPorKg < 0) {
@@ -173,6 +182,7 @@ export const CamadasScreen: React.FC = () => {
             fechaCambioAlimentoEngorde: fechaDesdeInput(form.fechaCambioAlimentoEngorde),
             fechaDesparasitacion: fechaDesdeInput(form.fechaDesparasitacion),
         };
+        if (camadaEditando) datos.avesDisponibles = Number(form.avesDisponibles);
 
         try {
             setGuardando(true);
@@ -193,6 +203,10 @@ export const CamadasScreen: React.FC = () => {
 
     const guardarBajas = async () => {
         if (!camadaBajas?.id) return;
+        if (camadaBajas.avesDisponibles === null) {
+            showAlert('Stock sin configurar', 'Edita la camada e ingresa cuántas aves vivas quedan antes de registrar bajas.');
+            return;
+        }
         const cantidad = Number(cantidadBajas);
         const avesVivas = obtenerPollosVivos(camadaBajas);
         if (!Number.isInteger(cantidad) || cantidad <= 0 || cantidad > avesVivas) {
@@ -310,12 +324,18 @@ export const CamadasScreen: React.FC = () => {
 
                 <View style={styles.metrics}>
                     <View style={styles.metric}>
-                        <Text style={styles.metricValue}>{metricas.pollosVivos}</Text>
-                        <Text style={styles.metricLabel}>Aves vivas</Text>
+                        <Text style={styles.metricValue}>{camada.cantidadPollos}</Text>
+                        <Text style={styles.metricLabel}>Aves iniciales</Text>
                     </View>
                     <View style={styles.metric}>
                         <Text style={styles.metricValue}>{camada.cantidadMuertes}</Text>
                         <Text style={styles.metricLabel}>Bajas ({metricas.tasaMortalidad}%)</Text>
+                    </View>
+                    <View style={styles.metric}>
+                        <Text style={styles.metricValue}>
+                            {camada.avesDisponibles === null ? 'Sin configurar' : formatNumber(camada.avesDisponibles)}
+                        </Text>
+                        <Text style={styles.metricLabel}>Aves disponibles</Text>
                     </View>
                     <View style={styles.metric}>
                         <Text style={styles.metricValue}>{formatCurrency(camada.totalGastos)}</Text>
@@ -430,6 +450,25 @@ export const CamadasScreen: React.FC = () => {
                                 <TextInput style={[styles.input, errores.cantidadPollos ? styles.inputError : null]} value={form.cantidadPollos} onChangeText={(valor) => actualizarCampo('cantidadPollos', valor)} keyboardType="number-pad" placeholder="Ej. 500" placeholderTextColor={COLORS.textSecondary} />
                                 {errores.cantidadPollos ? <Text style={styles.errorText}>{errores.cantidadPollos}</Text> : null}
                             </View>
+                            {camadaEditando ? (
+                                <View style={styles.field}>
+                                    <Text style={styles.label}>Aves vivas disponibles para venta *</Text>
+                                    <TextInput
+                                        style={[styles.input, errores.avesDisponibles ? styles.inputError : null]}
+                                        value={form.avesDisponibles}
+                                        onChangeText={(valor) => actualizarCampo('avesDisponibles', valor)}
+                                        keyboardType="number-pad"
+                                        placeholder="Ej. 480"
+                                        placeholderTextColor={COLORS.textSecondary}
+                                    />
+                                    <Text style={styles.metricLabel}>Para camadas existentes, ingresa el conteo vivo actual.</Text>
+                                    {errores.avesDisponibles ? <Text style={styles.errorText}>{errores.avesDisponibles}</Text> : null}
+                                </View>
+                            ) : (
+                                <Text style={[styles.metricLabel, styles.stockHint]}>
+                                    El stock inicial de venta será igual al número de aves ingresado.
+                                </Text>
+                            )}
                             <View style={styles.field}>
                                 <Text style={styles.label}>Costo de operación por kg *</Text>
                                 <TextInput
@@ -535,6 +574,7 @@ const styles = StyleSheet.create({
     modalTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700' },
     modalDescription: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 18 },
     sectionLabel: { marginTop: 8, marginBottom: 12, color: COLORS.textPrimary, fontSize: 14, fontWeight: '700' },
+    stockHint: { marginBottom: 14, lineHeight: 18 },
     field: { marginBottom: 14 },
     label: { marginBottom: 7, color: COLORS.textPrimary, fontSize: 13, fontWeight: '600' },
     input: { minHeight: 44, paddingHorizontal: 12, color: COLORS.textPrimary, fontSize: 14, borderWidth: 1, borderColor: COLORS.border, borderRadius: 7, backgroundColor: '#FFFFFF' },

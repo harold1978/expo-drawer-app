@@ -18,6 +18,7 @@ export interface Venta {
   camadaId: string;
   camadaNombre: string;
   fecha: Date;
+  cantidadAves: number;
   pesoKg: number;
   precioPorKg: number;
   costoOperacionPorKg: number;
@@ -37,12 +38,18 @@ export interface NuevaVentaInput {
   clienteId: string;
   camadaId: string;
   fecha: Date;
+  cantidadAves: number;
   pesoKg: number;
   precioPorKg: number;
   modalidad: ModalidadVenta;
   abonoInicial: number;
   fechaVencimiento?: Date | null;
 }
+
+export type ActualizarVentaInput = Omit<
+  NuevaVentaInput,
+  'camadaId' | 'abonoInicial'
+>;
 
 const redondearMoneda = (valor: number): number =>
   Math.round((valor + Number.EPSILON) * 100) / 100;
@@ -80,6 +87,7 @@ export const ventaFromFirestore = (id: string, data: DocumentData): Venta => ({
   camadaId: String(data.camadaId || ''),
   camadaNombre: String(data.camadaNombre || ''),
   fecha: convertirFecha(data.fecha) || new Date(),
+  cantidadAves: Number(data.cantidadAves) || 0,
   pesoKg: Number(data.pesoKg) || 0,
   precioPorKg: Number(data.precioPorKg) || 0,
   costoOperacionPorKg: Number(data.costoOperacionPorKg) || 0,
